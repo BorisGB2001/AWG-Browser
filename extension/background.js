@@ -42,7 +42,7 @@ async function native(cmd, args = {}) {
     res = await browser.runtime.sendNativeMessage(NATIVE, { cmd, ...args });
   } catch (e) {
     throw new Error(
-      "Нет связи с помощником AmneziaWG (native host). Запустите scripts/install-macos.sh и перезапустите Firefox. (" +
+      "Нет связи с помощником AmneziaWG (native host). Установите помощник (Windows: install.cmd, macOS/Linux: scripts/install.sh) и перезапустите Firefox. (" +
         (e && e.message ? e.message : e) +
         ")"
     );

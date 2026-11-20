@@ -24,7 +24,7 @@ async function ping() {
     err.innerHTML = '<b style="color:var(--err)">✗ Помощник не найден</b>';
     const hint = document.createElement("div");
     hint.className = "muted small";
-    hint.textContent = "Выполните в Терминале scripts/install-macos.sh из папки проекта и перезапустите Firefox.";
+    hint.textContent = "Установите помощник (Windows: install.cmd из архива; macOS/Linux: scripts/install.sh) и перезапустите Firefox.";
     box.append(err, hint);
     return false;
   }
