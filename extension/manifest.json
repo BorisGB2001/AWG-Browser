@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "AmneziaWG для Firefox",
+  "name": "Amnezia Browser Client",
   "version": "1.0.0",
-  "description": "VPN AmneziaWG только для Firefox: локальный туннель wireproxy-awg, выбор сервера, раздельное туннелирование по доменам.",
+  "description": "Неофициальный клиент AmneziaWG VPN только для браузера Firefox: локальный туннель wireproxy-awg, выбор сервера, раздельное туннелирование по доменам, kill switch.",
   "icons": {
     "48": "icons/icon-on.svg",
     "96": "icons/icon-on.svg"
@@ -15,12 +15,17 @@
     "privacy",
     "activeTab"
   ],
-  "host_permissions": ["<all_urls>"],
+  "host_permissions": [
+    "<all_urls>"
+  ],
   "background": {
-    "scripts": ["lib/rules.js", "background.js"]
+    "scripts": [
+      "lib/rules.js",
+      "background.js"
+    ]
   },
   "action": {
-    "default_title": "AmneziaWG — выключен",
+    "default_title": "Amnezia Browser Client — выключен",
     "default_popup": "popup/popup.html",
     "default_icon": "icons/icon-off.svg"
   },
@@ -30,11 +35,14 @@
   },
   "browser_specific_settings": {
     "gecko": {
-      "id": "awg-firefox@local",
-      "strict_min_version": "128.0",
+      "id": "awg-browser@borisgb2001.github.io",
+      "strict_min_version": "140.0",
       "data_collection_permissions": {
-        "required": ["none"]
+        "required": [
+          "none"
+        ]
       }
     }
-  }
+  },
+  "homepage_url": "https://github.com/BorisGB2001/AWG-Browser"
 }

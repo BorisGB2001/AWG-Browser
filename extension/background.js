@@ -70,22 +70,22 @@ async function setRuntime(patch) {
 function updateBadge() {
   let text = "";
   let color = "#9e9e9e";
-  let title = "AmneziaWG — выключен";
+  let title = "Amnezia Browser Client — выключен";
   let icon = "icons/icon-off.svg";
   if (settings.enabled) {
     if (rt.status === "on") {
       text = "ON";
       color = "#2e7d32";
-      title = "AmneziaWG — подключено";
+      title = "Amnezia Browser Client — подключено";
       icon = "icons/icon-on.svg";
     } else if (rt.status === "connecting") {
       text = "…";
       color = "#ef6c00";
-      title = "AmneziaWG — подключение";
+      title = "Amnezia Browser Client — подключение";
     } else if (rt.status === "error") {
       text = "!";
       color = "#c62828";
-      title = "AmneziaWG — ошибка: " + (rt.error || "");
+      title = "Amnezia Browser Client — ошибка: " + (rt.error || "");
       icon = "icons/icon-err.svg";
     }
   }

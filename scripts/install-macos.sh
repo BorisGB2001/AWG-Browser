@@ -1,5 +1,5 @@
 #!/bin/bash
-# Установка помощника для расширения «AmneziaWG для Firefox» (macOS).
+# Установка помощника для расширения «Amnezia Browser Client» (macOS).
 #  1. собирает wireproxy-awg (userspace AmneziaWG -> SOCKS5) из исходников, нужен Go;
 #  2. копирует native-host (Python 3) в ~/Library/Application Support/AWG-Firefox;
 #  3. регистрирует native messaging host в Firefox.
@@ -7,7 +7,7 @@
 set -euo pipefail
 
 WIREPROXY_VERSION="${WIREPROXY_VERSION:-v1.0.18}"
-EXT_ID="awg-firefox@local"
+EXT_ID="awg-browser@borisgb2001.github.io"
 HOST_NAME="awg_firefox"
 
 PROJECT="$(cd "$(dirname "$0")/.." && pwd)"

@@ -1,4 +1,4 @@
-# AmneziaWG для Firefox
+# Amnezia Browser Client — AmneziaWG VPN для Firefox
 
 Расширение Firefox, которое пускает **только трафик браузера** через VPN-сервер AmneziaWG.
 Остальные программы на Mac ходят в сеть напрямую. Root не нужен.
@@ -45,10 +45,11 @@ Firefox ──proxy.onRequest──▶ SOCKS5 127.0.0.1:40800 ──▶ wireprox
 3. Установить расширение в Firefox:
    - **для проверки**: `about:debugging#/runtime/this-firefox` → «Загрузить временное дополнение…» →
      `extension/manifest.json` (сбрасывается при перезапуске Firefox);
-   - **постоянно**: обычный Firefox принимает только подписанные расширения. Варианты:
-     подписать как unlisted на addons.mozilla.org (`npx web-ext sign --channel=unlisted`, нужен
-     API-ключ AMO) либо использовать Firefox Developer Edition / Nightly с
-     `xpinstall.signatures.required = false` и поставить `dist/*.xpi` (`./scripts/build-xpi.sh`).
+   - **постоянно**: обычный Firefox принимает только подписанные расширения. Подписать на
+     addons.mozilla.org для своего распространения: `./scripts/sign.sh` (спросит API-ключ AMO,
+     https://addons.mozilla.org/developers/addon/api/key/), подписанный `.xpi` появится в
+     `web-ext-artifacts/` — откройте его в Firefox. Либо Firefox Developer Edition / Nightly с
+     `xpinstall.signatures.required = false` и `dist/*.xpi` (`./scripts/build-xpi.sh`).
 4. Откроется страница настроек → «Добавить сервер» → вставьте конфиг AmneziaWG → выберите сервер →
    включите тумблер в popup.
 
@@ -74,6 +75,7 @@ Firefox ──proxy.onRequest──▶ SOCKS5 127.0.0.1:40800 ──▶ wireprox
 | `native-host/awg_host.py` | помощник native messaging |
 | `scripts/install-macos.sh` | сборка wireproxy-awg и регистрация помощника |
 | `scripts/build-xpi.sh` | упаковка `dist/awg-firefox-<версия>.xpi` |
+| `scripts/sign.sh` | подпись на AMO: `unlisted` (по умолчанию) или `listed` |
 
 Данные помощника: `~/Library/Application Support/AWG-Firefox/` (`profiles/`, `run/state.json`,
 `logs/wireproxy.log`). Манифест native host:
