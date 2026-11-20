@@ -11,3 +11,4 @@ reports/
 .claude/
 CLAUDE.md
 web-ext-artifacts/
+.amo-upload-uuid
