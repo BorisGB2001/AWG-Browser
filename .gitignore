@@ -1,0 +1,12 @@
+build/
+dist/
+.DS_Store
+__pycache__/
+# boris.gb 2026-11-20 21:34 - не публиковать в AWG-Browser: вложенные отдельные репозитории, рабочие заметки и промты сессий, настройки Claude
+trusttunnel/
+trusttunnel-chrome/
+notes/
+prompts/
+reports/
+.claude/
+CLAUDE.md

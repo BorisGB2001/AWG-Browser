@@ -1,0 +1,40 @@
+{
+  "manifest_version": 3,
+  "name": "AmneziaWG для Firefox",
+  "version": "1.0.0",
+  "description": "VPN AmneziaWG только для Firefox: локальный туннель wireproxy-awg, выбор сервера, раздельное туннелирование по доменам.",
+  "icons": {
+    "48": "icons/icon-on.svg",
+    "96": "icons/icon-on.svg"
+  },
+  "permissions": [
+    "proxy",
+    "nativeMessaging",
+    "storage",
+    "alarms",
+    "privacy",
+    "activeTab"
+  ],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "scripts": ["lib/rules.js", "background.js"]
+  },
+  "action": {
+    "default_title": "AmneziaWG — выключен",
+    "default_popup": "popup/popup.html",
+    "default_icon": "icons/icon-off.svg"
+  },
+  "options_ui": {
+    "page": "options/options.html",
+    "open_in_tab": true
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "awg-firefox@local",
+      "strict_min_version": "128.0",
+      "data_collection_permissions": {
+        "required": ["none"]
+      }
+    }
+  }
+}

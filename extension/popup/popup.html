@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>AmneziaWG</title>
+  <link rel="stylesheet" href="../lib/common.css">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header class="row">
+    <img src="../icons/icon-on.svg" width="22" height="22" alt="">
+    <strong class="grow">AmneziaWG</strong>
+    <label class="switch" title="Включить / выключить VPN">
+      <input type="checkbox" id="toggle">
+      <span class="slider"></span>
+    </label>
+  </header>
+
+  <section class="status" id="statusBox">
+    <div class="dot" id="dot"></div>
+    <div class="grow">
+      <div id="statusText">Выключен</div>
+      <div class="small muted" id="statusSub"></div>
+    </div>
+  </section>
+
+  <label class="field">
+    <span class="small muted">Сервер</span>
+    <select id="profile"></select>
+  </label>
+
+  <label class="field">
+    <span class="small muted">Режим</span>
+    <select id="mode">
+      <option value="exclude">Всё через VPN, кроме списка</option>
+      <option value="include">Только сайты из списка через VPN</option>
+    </select>
+  </label>
+
+  <section class="site" id="siteBox" hidden>
+    <div class="small muted">Текущий сайт</div>
+    <div class="row">
+      <span class="grow host" id="siteHost"></span>
+      <span class="pill" id="siteRoute"></span>
+    </div>
+    <button type="button" id="siteBtn"></button>
+  </section>
+
+  <section class="stats" id="stats" hidden>
+    <div><span class="muted small">Handshake</span><br><span id="hs">—</span></div>
+    <div><span class="muted small">Принято</span><br><span id="rx">—</span></div>
+    <div><span class="muted small">Отправлено</span><br><span id="tx">—</span></div>
+  </section>
+
+  <footer class="row">
+    <button type="button" id="ipBtn">Проверить IP</button>
+    <span class="grow"></span>
+    <button type="button" id="optBtn">Настройки</button>
+  </footer>
+
+  <script src="../lib/rules.js"></script>
+  <script src="../lib/api.js"></script>
+  <script src="../lib/toast.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

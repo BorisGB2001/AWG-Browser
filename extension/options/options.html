@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AmneziaWG — настройки</title>
+  <link rel="stylesheet" href="../lib/common.css">
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+<main>
+  <header class="row">
+    <img src="../icons/icon-on.svg" width="32" height="32" alt="">
+    <div class="grow">
+      <h1>AmneziaWG для Firefox</h1>
+      <div class="muted small">VPN только для браузера: AmneziaWG-туннель в локальном wireproxy-awg, Firefox ходит через него по SOCKS5.</div>
+    </div>
+  </header>
+
+  <section class="card" id="hostCard">
+    <h2>Помощник на компьютере</h2>
+    <div class="row">
+      <div class="grow" id="hostInfo">Проверка…</div>
+      <button type="button" id="pingBtn">Проверить</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Серверы</h2>
+    <div id="profiles" class="profiles"></div>
+
+    <details id="importBox">
+      <summary>Добавить сервер</summary>
+      <div class="import">
+        <label>Название <input type="text" id="impName" placeholder="Например: Нидерланды"></label>
+        <label>Конфиг AmneziaWG (.conf) или ключ <code>vpn://…</code>
+          <textarea id="impText" rows="10" spellcheck="false" placeholder="[Interface]&#10;PrivateKey = …&#10;Address = …&#10;Jc = …&#10;&#10;[Peer]&#10;PublicKey = …&#10;Endpoint = …"></textarea>
+        </label>
+        <div class="row">
+          <label class="file-btn"><input type="file" id="impFile" accept=".conf,.txt,text/plain" hidden>Выбрать файл…</label>
+          <span class="grow muted small">Ключи хранятся только на этом компьютере (права 600), не в профиле Firefox.</span>
+          <button type="button" class="primary" id="impBtn">Импортировать</button>
+        </div>
+      </div>
+    </details>
+  </section>
+
+  <section class="card">
+    <h2>Маршрутизация</h2>
+    <div class="modes">
+      <label class="radio"><input type="radio" name="mode" value="exclude"> <span><b>Всё через VPN, кроме списка</b><br><span class="muted small">Сайты из списка исключений открываются напрямую.</span></span></label>
+      <label class="radio"><input type="radio" name="mode" value="include"> <span><b>Только сайты из списка через VPN</b><br><span class="muted small">Остальные сайты открываются напрямую.</span></span></label>
+    </div>
+    <div class="lists">
+      <label>Исключения (напрямую)
+        <textarea id="excludeList" rows="8" spellcheck="false" placeholder="example.ru&#10;bank.example.com&#10;203.0.113.0/24"></textarea>
+      </label>
+      <label>Только через VPN
+        <textarea id="includeList" rows="8" spellcheck="false" placeholder="youtube.com&#10;googlevideo.com&#10;example.org"></textarea>
+      </label>
+    </div>
+    <p class="muted small">По одному домену в строке. Домен включает все поддомены. Можно указывать IPv4 и подсети CIDR. Строки с # игнорируются.</p>
+    <label class="check"><input type="checkbox" id="bypassLocal"> Локальные адреса (localhost, 192.168.*, 10.*, *.local) — всегда напрямую</label>
+  </section>
+
+  <section class="card">
+    <h2>Защита</h2>
+    <label class="check"><input type="checkbox" id="killSwitch"> Kill switch: если туннель упал, не пускать трафик в обход VPN</label>
+    <label class="check"><input type="checkbox" id="webrtcProtect"> Защита от утечки IP через WebRTC, пока VPN включён</label>
+    <label class="check"><input type="checkbox" id="autoReconnect"> Автоматически переподключать туннель</label>
+    <p class="muted small">DNS-запросы для сайтов через VPN выполняются внутри туннеля (DNS из конфига).</p>
+  </section>
+
+  <section class="card">
+    <h2>Дополнительно</h2>
+    <div class="ports">
+      <label>Локальный SOCKS5-порт <input type="number" id="port" min="1024" max="65535"></label>
+      <label>Порт статистики <input type="number" id="infoPort" min="1024" max="65535"></label>
+    </div>
+  </section>
+
+  <div class="actions">
+    <button type="button" class="primary" id="saveBtn">Сохранить настройки</button>
+  </div>
+
+  <section class="card">
+    <h2>Журнал wireproxy</h2>
+    <div class="row"><button type="button" id="logBtn">Показать журнал</button></div>
+    <pre id="log" hidden></pre>
+  </section>
+</main>
+
+<script src="../lib/rules.js"></script>
+<script src="../lib/api.js"></script>
+<script src="../lib/toast.js"></script>
+<script src="options.js"></script>
+</body>
+</html>
