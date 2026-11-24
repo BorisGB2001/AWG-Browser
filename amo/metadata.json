@@ -1,0 +1,18 @@
+{
+  "version": {
+    "license": "MIT",
+    "release_notes": {
+      "en-US": "First version in the public catalog. Same code as 1.0.1: DNS always goes through the tunnel, kill switch blocks requests while the tunnel is down, WebRTC protection follows the VPN switch, internationalized domains in site lists, private-window warning. Requires the helper app 2.1.0 and Firefox 140 or newer.",
+      "ru": "Первая версия в публичном каталоге. Код тот же, что в 1.0.1: DNS всегда идёт через туннель, kill switch блокирует запросы, пока туннель не поднят, защита WebRTC включается вместе с VPN, кириллические домены в списках сайтов, предупреждение о приватных окнах. Нужен помощник 2.1.0 и Firefox 140 или новее."
+    }
+  },
+  "categories": {
+    "firefox": [
+      "privacy-security"
+    ]
+  },
+  "summary": {
+    "en-US": "Unofficial AmneziaWG VPN client for Firefox only: a local wireproxy-awg tunnel, several servers, .conf and vpn:// import, per-site split tunneling, kill switch. Requires a small helper app. Open source.",
+    "ru": "Неофициальный клиент AmneziaWG VPN только для Firefox: локальный туннель wireproxy-awg, несколько серверов, импорт .conf и vpn://, раздельное туннелирование по сайтам, kill switch. Нужен небольшой помощник. Открытый код."
+  }
+}
