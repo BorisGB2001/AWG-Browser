@@ -190,3 +190,67 @@ func TestProtocolFraming(t *testing.T) {
 		t.Fatal("unknown command accepted")
 	}
 }
+
+func TestWithDNS(t *testing.T) {
+	if out, changed := withDNS(testConf); changed || out != testConf {
+		t.Fatal("config with DNS must stay untouched")
+	}
+	noDNS := strings.Replace(testConf, "DNS = 1.1.1.1\n", "", 1)
+	out, changed := withDNS(noDNS)
+	if !changed || !strings.Contains(out, "[Interface]\nDNS = "+defaultDNS+"\nPrivateKey") {
+		t.Fatalf("DNS not added:\n%s", out)
+	}
+	info, _ := describeConf(noDNS)
+	if !info.DNSDefault || info.DNS != defaultDNS {
+		t.Fatalf("describe: %+v", info)
+	}
+}
+
+func TestIniPath(t *testing.T) {
+	got, err := iniPath("/home/Dev#1/a;b/x.conf")
+	if err != nil || got != "`/home/Dev#1/a;b/x.conf`" {
+		t.Fatalf("iniPath: %q %v", got, err)
+	}
+	if _, err := iniPath("/tmp/a`b"); err == nil {
+		t.Fatal("backtick in path accepted")
+	}
+}
+
+// A profile without DNS must run from a copy with the default DNS, in a data
+// directory whose path contains "#" and ";".
+func TestTunnelNoDNSAndOddPath(t *testing.T) {
+	t.Setenv("AWG_BROWSER_HOME", filepath.Join(t.TempDir(), "Dev#1;x"))
+	initPaths()
+	if err := ensureDirs(); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(P.Base, "bin", exeName("wireproxy"))
+	if out, err := exec.Command("go", "build", "-o", bin, "./testdata/fakewireproxy").CombinedOutput(); err != nil {
+		t.Fatalf("build fake: %v\n%s", err, out)
+	}
+	p, err := importProfile("nodns", strings.Replace(testConf, "DNS = 1.1.1.1\n", "", 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !p.DNSDefault {
+		t.Fatal("dnsDefault flag missing")
+	}
+	port, info := freePort(t), freePort(t)
+	st, err := startTunnel(p.ID, port, info)
+	if err != nil {
+		t.Fatalf("start: %v\n%s", err, tailLog(20))
+	}
+	defer stopTunnel()
+	seen, err := os.ReadFile(P.RunConf + ".seen")
+	if err != nil || !strings.Contains(string(seen), "DNS = "+defaultDNS) {
+		t.Fatalf("tunnel started without DNS: %v\n%s", err, seen)
+	}
+	// A different info port must restart the tunnel, not reuse it.
+	st2, err := startTunnel(p.ID, port, freePort(t))
+	if err != nil || st2["pid"] == st["pid"] {
+		t.Fatalf("info port change ignored: %v", err)
+	}
+	if err := stopTunnel(); err != nil {
+		t.Fatal(err)
+	}
+}

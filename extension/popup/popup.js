@@ -24,6 +24,7 @@ function render() {
   else if (!settings.profileId) sub = "Добавьте сервер в настройках";
   $("statusSub").textContent = sub;
 
+  $("version").textContent = "v" + state.version;
   $("profile").value = settings.profileId || "";
   $("mode").value = settings.mode;
 
@@ -131,7 +132,10 @@ $("siteBtn").addEventListener("click", async (e) => {
   const [list, op] = (e.target.dataset.action || "").split(":");
   if (!list) return;
   try {
-    await api("editList", { list, host: AWGRules.siteOf(currentHost), add: op === "add" });
+    const add = op === "add";
+    // Adding uses the site without "www."; removing passes the full host so that
+    // every entry covering it (parent domain, "www.") is dropped.
+    await api("editList", { list, host: add ? AWGRules.siteOf(currentHost) : currentHost, add });
     await refresh();
     Toast.ok("Список обновлён. Перезагрузите вкладку, чтобы применить.");
   } catch (err) {
@@ -169,6 +173,9 @@ browser.runtime.onMessage.addListener((msg) => {
       renderSite();
     }
     await loadProfiles();
+    try {
+      $("privWarn").hidden = await browser.extension.isAllowedIncognitoAccess();
+    } catch (_) {}
     if (state.settings.enabled) {
       state = await api("refresh");
       render();

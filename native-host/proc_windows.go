@@ -33,16 +33,20 @@ func hideWindow(cmd *exec.Cmd) {
 // startDetached starts wireproxy without a console window and outside Firefox's
 // job object (Firefox kills the job of a native host when it is done with it).
 // If the job does not allow breakaway, it falls back to a plain detached start.
-func startDetached(newCmd func() *exec.Cmd) (*exec.Cmd, error) {
+// The returned note is written to the wireproxy log: it explains a tunnel that
+// dies right after start when breakaway was refused.
+func startDetached(newCmd func() *exec.Cmd) (*exec.Cmd, string, error) {
 	base := uint32(createNoWindow | createNewProcessGroup | detachedProcess)
 	cmd := newCmd()
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: base | createBreakawayFromJob}
-	if err := cmd.Start(); err == nil {
-		return cmd, nil
+	err := cmd.Start()
+	if err == nil {
+		return cmd, "", nil
 	}
+	note := "CREATE_BREAKAWAY_FROM_JOB refused (" + err.Error() + "); wireproxy started inside the browser's job object and may be stopped together with the helper"
 	cmd = newCmd()
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: base}
-	return cmd, cmd.Start()
+	return cmd, note, cmd.Start()
 }
 
 func imageName(h syscall.Handle) string {

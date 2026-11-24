@@ -3,6 +3,7 @@
 package main
 
 import (
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
@@ -15,10 +16,24 @@ func hideWindow(*exec.Cmd) {}
 
 // startDetached runs wireproxy in its own session so it outlives the host
 // process and is not hit by signals sent to Firefox's process group.
-func startDetached(newCmd func() *exec.Cmd) (*exec.Cmd, error) {
+func startDetached(newCmd func() *exec.Cmd) (*exec.Cmd, string, error) {
 	cmd := newCmd()
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
-	return cmd, cmd.Start()
+	return cmd, "", cmd.Start()
+}
+
+// processName returns the executable name of pid, or "" when unknown.
+func processName(pid int) string {
+	// Linux: /proc works everywhere, while "ps -p" is missing in BusyBox and
+	// /bin/ps does not exist on NixOS.
+	if data, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/comm"); err == nil {
+		return strings.TrimSpace(string(data))
+	}
+	out, err := exec.Command("/bin/ps", "-p", strconv.Itoa(pid), "-o", "comm=").Output()
+	if err != nil {
+		return ""
+	}
+	return filepath.Base(strings.TrimSpace(string(out)))
 }
 
 // wireproxyAlive reports whether pid is a running wireproxy process (pids get reused).
@@ -26,11 +41,7 @@ func wireproxyAlive(pid int) bool {
 	if pid <= 1 || syscall.Kill(pid, 0) != nil {
 		return false
 	}
-	out, err := exec.Command("/bin/ps", "-p", strconv.Itoa(pid), "-o", "comm=").Output()
-	if err != nil {
-		return false
-	}
-	return filepath.Base(strings.TrimSpace(string(out))) == "wireproxy"
+	return processName(pid) == "wireproxy"
 }
 
 func terminate(pid int) {

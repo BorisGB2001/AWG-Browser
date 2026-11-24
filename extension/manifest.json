@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Amnezia Browser Client",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Неофициальный клиент AmneziaWG VPN только для браузера Firefox: локальный туннель wireproxy-awg, выбор сервера, раздельное туннелирование по доменам, kill switch.",
   "icons": {
     "48": "icons/icon-on.svg",

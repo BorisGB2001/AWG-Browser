@@ -1,4 +1,4 @@
-/* AmneziaWG для Firefox — background (event page). */
+/* Amnezia Browser Client — background (event page). */
 "use strict";
 
 const NATIVE = "awg_firefox";
@@ -20,7 +20,8 @@ const DEFAULTS = {
 
 let settings = { ...DEFAULTS };
 // Runtime state of the tunnel. Credentials live only in memory / storage.session.
-let rt = { status: "off", error: null, username: null, password: null, metrics: null, since: null };
+// "active" is the "profile|port|infoPort" the running tunnel was started with.
+let rt = { status: "off", error: null, active: null, username: null, password: null, metrics: null, since: null };
 
 const ready = (async () => {
   const stored = await browser.storage.local.get(Object.keys(DEFAULTS));
@@ -32,6 +33,10 @@ const ready = (async () => {
     /* storage.session unavailable — fine */
   }
   updateBadge();
+  // An event page can be woken up without onStartup; keep the health alarm alive.
+  if (settings.enabled && !(await browser.alarms.get(HEALTH_ALARM))) {
+    browser.alarms.create(HEALTH_ALARM, { periodInMinutes: 0.5 });
+  }
 })();
 
 // ------------------------------------------------------------------ native host
@@ -95,7 +100,10 @@ function updateBadge() {
   browser.action.setIcon({ path: icon });
 }
 
-async function applyWebRtc(on) {
+// WebRTC and prefetch protection follow the VPN switch itself, not the tunnel
+// status: while the VPN is meant to be on, nothing may bypass it even if the
+// tunnel is still connecting or has failed.
+async function applyPrivacy(on) {
   try {
     const setting = browser.privacy.network.webRTCIPHandlingPolicy;
     if (on && settings.webrtcProtect) await setting.set({ value: "disable_non_proxied_udp" });
@@ -103,116 +111,151 @@ async function applyWebRtc(on) {
   } catch (e) {
     console.warn("WebRTC policy:", e);
   }
-}
-
-// ------------------------------------------------------------------ connect / disconnect
-
-let connecting = null;
-
-async function connect() {
-  if (connecting) return connecting;
-  connecting = (async () => {
-    if (!settings.profileId) {
-      await setRuntime({ status: "error", error: "Не выбран профиль сервера. Импортируйте конфиг в настройках." });
-      return;
-    }
-    await setRuntime({ status: "connecting", error: null });
-    try {
-      const { state } = await native("start", {
-        id: settings.profileId,
-        port: settings.port,
-        infoPort: settings.infoPort,
-      });
-      await setRuntime({
-        status: "on",
-        error: null,
-        username: state.username,
-        password: state.password,
-        metrics: state.metrics || null,
-        since: state.startedAt || Math.floor(Date.now() / 1000),
-      });
-      await applyWebRtc(true);
-    } catch (e) {
-      await setRuntime({ status: "error", error: e.message, username: null, password: null });
-    }
-  })();
+  // DNS prefetch and speculative connections would name the sites to the local
+  // resolver and open connections past the tunnel.
   try {
-    await connecting;
-  } finally {
-    connecting = null;
-  }
-}
-
-async function disconnect() {
-  await applyWebRtc(false);
-  try {
-    await native("stop");
+    const predict = browser.privacy.network.networkPredictionEnabled;
+    if (on) await predict.set({ value: false });
+    else await predict.clear({});
   } catch (e) {
-    console.warn(e);
+    console.warn("network prediction:", e);
   }
-  await setRuntime({ status: "off", error: null, username: null, password: null, metrics: null, since: null });
+}
+
+// ------------------------------------------------------------------ tunnel state machine
+//
+// Every change (switch, server, ports, health check) goes through one queue and
+// calls reconcile(), which reads the settings at the moment it runs. So a switch
+// flipped or a server changed while a start is in flight is never lost, and a
+// health check cannot bring the tunnel back after the user turned the VPN off.
+
+let queue = Promise.resolve();
+
+function enqueue(fn) {
+  const run = queue.then(fn);
+  queue = run.catch((e) => console.warn("tunnel op:", e));
+  return run;
+}
+
+const wantKey = () => [settings.profileId, settings.port, settings.infoPort].join("|");
+const stateKey = (st) => [st.profile, st.port, st.infoPort].join("|");
+
+function tunnelUp(state) {
+  return setRuntime({
+    status: "on",
+    error: null,
+    active: stateKey(state),
+    username: state.username,
+    password: state.password,
+    metrics: state.metrics || null,
+    since: state.startedAt || Math.floor(Date.now() / 1000),
+  });
+}
+
+const OFF = { status: "off", error: null, active: null, username: null, password: null, metrics: null, since: null };
+
+async function reconcile() {
+  if (!settings.enabled) {
+    await applyPrivacy(false);
+    try {
+      await native("stop");
+    } catch (e) {
+      console.warn(e);
+    }
+    await setRuntime(OFF);
+    return;
+  }
+  await applyPrivacy(true);
+  if (!settings.profileId) {
+    await setRuntime({ ...OFF, status: "error", error: "Не выбран профиль сервера. Импортируйте конфиг в настройках." });
+    return;
+  }
+  if (rt.status !== "on" || rt.active !== wantKey()) {
+    await setRuntime({ status: "connecting", error: null, active: null, username: null, password: null });
+  }
+  try {
+    // "start" is idempotent: a tunnel already running with the same settings is reused.
+    const { state } = await native("start", { id: settings.profileId, port: settings.port, infoPort: settings.infoPort });
+    await tunnelUp(state);
+  } catch (e) {
+    await setRuntime({ ...OFF, status: "error", error: e.message });
+  }
+}
+
+const sync = () => enqueue(reconcile);
+
+function ensureAlarm() {
+  if (settings.enabled) browser.alarms.create(HEALTH_ALARM, { periodInMinutes: 0.5 });
+  else browser.alarms.clear(HEALTH_ALARM);
 }
 
 async function setEnabled(value) {
   await saveSettings({ enabled: !!value });
-  if (value) {
-    browser.alarms.create(HEALTH_ALARM, { periodInMinutes: 0.5 });
-    await connect();
-  } else {
-    browser.alarms.clear(HEALTH_ALARM);
-    await disconnect();
-  }
+  ensureAlarm();
+  await sync();
 }
 
-async function healthCheck() {
-  if (!settings.enabled) return;
-  try {
-    const { state } = await native("status");
-    const sameTunnel = state.running && state.profile === settings.profileId && state.port === settings.port;
-    if (sameTunnel) {
-      await setRuntime({
-        status: "on",
-        error: null,
-        username: state.username,
-        password: state.password,
-        metrics: state.metrics || null,
-        since: state.startedAt,
-      });
-    } else if (settings.autoReconnect || rt.status === "on") {
-      await connect();
+function healthCheck() {
+  return enqueue(async () => {
+    if (!settings.enabled) return;
+    let state;
+    try {
+      ({ state } = await native("status"));
+    } catch (e) {
+      await setRuntime({ ...OFF, status: "error", error: e.message });
+      return;
     }
-  } catch (e) {
-    await setRuntime({ status: "error", error: e.message });
-  }
+    if (!settings.enabled) return; // switched off while the host was answering
+    if (state.running && stateKey(state) === wantKey()) await tunnelUp(state);
+    else if (settings.autoReconnect) await reconcile();
+    else await setRuntime({ ...OFF, status: "error", error: "Туннель остановлен. Автопереподключение выключено." });
+  });
 }
 
 // ------------------------------------------------------------------ proxy routing
 
 const DIRECT = { type: "direct" };
+// Nothing listens on the discard port: a request sent here fails at once.
+// Used by the kill switch when there is no working tunnel.
+const BLACKHOLE = { type: "http", host: "127.0.0.1", port: 9 };
+
+function route(details) {
+  if (!settings.enabled) return DIRECT;
+  let host;
+  try {
+    host = new URL(details.url).hostname;
+  } catch (_) {
+    return DIRECT;
+  }
+  if (!AWGRules.shouldTunnel(host, settings)) return DIRECT;
+  if (rt.status !== "on" || !rt.password) return settings.killSwitch ? BLACKHOLE : DIRECT;
+  const tunnel = {
+    type: "socks",
+    host: "127.0.0.1",
+    port: settings.port,
+    username: rt.username,
+    password: rt.password,
+    proxyDNS: true,
+    failoverTimeout: 5,
+    // Firefox reuses proxy connections; a new key per tunnel start makes a
+    // changed server take effect at once.
+    connectionIsolationKey: "awg:" + rt.active + ":" + rt.since,
+  };
+  // Kill switch on: only the tunnel, the request fails if it is down.
+  // Kill switch off: Firefox falls back to a direct connection.
+  return settings.killSwitch ? tunnel : [tunnel, DIRECT];
+}
 
 browser.proxy.onRequest.addListener(
   async (details) => {
-    await ready;
-    if (!settings.enabled) return DIRECT;
-    let host;
     try {
-      host = new URL(details.url).hostname;
-    } catch (_) {
-      return DIRECT;
+      await ready;
+      return route(details);
+    } catch (e) {
+      // Never fail open: an internal error must not send VPN traffic direct.
+      console.error("proxy.onRequest:", e);
+      return settings.enabled && settings.killSwitch ? BLACKHOLE : DIRECT;
     }
-    if (!AWGRules.shouldTunnel(host, settings)) return DIRECT;
-    if (rt.status !== "on" && !settings.killSwitch) return DIRECT;
-    // With the kill switch on and the tunnel down this proxy is unreachable,
-    // so the request fails instead of leaking around the VPN.
-    return {
-      type: "socks",
-      host: "127.0.0.1",
-      port: settings.port,
-      username: rt.username || "awg",
-      password: rt.password || "-",
-      proxyDNS: true,
-      failoverTimeout: 5,
-    };
   },
   { urls: ["<all_urls>"] }
 );
@@ -223,18 +266,14 @@ browser.proxy.onError.addListener((err) => console.warn("proxy error:", err && e
 
 browser.runtime.onStartup.addListener(async () => {
   await ready;
-  if (settings.enabled) {
-    browser.alarms.create(HEALTH_ALARM, { periodInMinutes: 0.5 });
-    await connect();
-  }
+  ensureAlarm();
+  if (settings.enabled) await sync();
 });
 
 browser.runtime.onInstalled.addListener(async (details) => {
   await ready;
-  if (settings.enabled) {
-    browser.alarms.create(HEALTH_ALARM, { periodInMinutes: 0.5 });
-    await connect();
-  }
+  ensureAlarm();
+  if (settings.enabled) await sync();
   if (details.reason === "install") browser.runtime.openOptionsPage();
 });
 
@@ -246,7 +285,7 @@ browser.alarms.onAlarm.addListener(async (a) => {
 // ------------------------------------------------------------------ messages from popup/options
 
 async function getState() {
-  return { settings, runtime: { ...rt, password: undefined, username: undefined } };
+  return { settings, runtime: { ...rt, password: undefined, username: undefined }, version: browser.runtime.getManifest().version };
 }
 
 async function checkIp() {
@@ -265,7 +304,9 @@ async function editList(list, host, add) {
   const key = list === "include" ? "includeList" : "excludeList";
   const entry = AWGRules.normalizeEntry(host);
   if (!entry) throw new Error("Пустой домен.");
-  const cur = settings[key].filter((e) => e !== entry);
+  // Removing drops every entry that covers the host (a parent domain, "www."),
+  // otherwise the site would keep its route and the button would do nothing.
+  const cur = settings[key].filter((e) => e !== entry && (add || !AWGRules.matches(entry, e)));
   if (add) cur.push(entry);
   await saveSettings({ [key]: cur });
   return { [key]: cur };
@@ -290,12 +331,14 @@ const handlers = {
         clean[p] = n;
       }
     }
-    const needReconnect =
+    const port = "port" in clean ? clean.port : settings.port;
+    const infoPort = "infoPort" in clean ? clean.infoPort : settings.infoPort;
+    if (port === infoPort) throw new Error("Порты SOCKS5 и статистики должны различаться.");
+    const needSync =
       settings.enabled &&
-      ["profileId", "port", "infoPort"].some((k) => k in clean && clean[k] !== settings[k]);
+      ["profileId", "port", "infoPort", "webrtcProtect"].some((k) => k in clean && clean[k] !== settings[k]);
     await saveSettings(clean);
-    if ("webrtcProtect" in clean && rt.status === "on") await applyWebRtc(true);
-    if (needReconnect) await connect();
+    if (needSync) await sync();
     return getState();
   },
   async listProfiles() {

@@ -12,7 +12,7 @@
   <header class="row">
     <img src="../icons/icon-on.svg" width="32" height="32" alt="">
     <div class="grow">
-      <h1>Amnezia Browser Client</h1>
+      <h1>Amnezia Browser Client <span class="muted small" id="version"></span></h1>
       <div class="muted small">VPN только для браузера: AmneziaWG-туннель в локальном wireproxy-awg, Firefox ходит через него по SOCKS5.</div>
     </div>
   </header>
@@ -65,6 +65,7 @@
 
   <section class="card">
     <h2>Защита</h2>
+    <div class="warn small" id="privWarn" hidden>Приватные окна сейчас идут мимо VPN и kill switch: расширение их не видит. Откройте about:addons → Amnezia Browser Client → «Запуск в приватных окнах» → «Разрешить».</div>
     <label class="check"><input type="checkbox" id="killSwitch"> Kill switch: если туннель упал, не пускать трафик в обход VPN</label>
     <label class="check"><input type="checkbox" id="webrtcProtect"> Защита от утечки IP через WebRTC, пока VPN включён</label>
     <label class="check"><input type="checkbox" id="autoReconnect"> Автоматически переподключать туннель</label>

@@ -66,7 +66,9 @@ async function loadProfiles() {
     meta.className = "meta";
     meta.textContent = p.error
       ? "Ошибка: " + p.error
-      : [p.endpoint, p.protocol, "адрес " + p.address].filter(Boolean).join(" · ");
+      : [p.endpoint, p.protocol, "адрес " + p.address, p.dnsDefault ? "DNS не задан в конфиге — используется " + p.dns + " через туннель" : "DNS " + p.dns]
+          .filter(Boolean)
+          .join(" · ");
     info.append(name, meta);
 
     const btns = document.createElement("div");
@@ -210,7 +212,11 @@ $("logBtn").addEventListener("click", async () => {
 (async () => {
   try {
     state = await api("getState");
+    $("version").textContent = "v" + state.version;
     fillForm();
+    try {
+      $("privWarn").hidden = await browser.extension.isAllowedIncognitoAccess();
+    } catch (_) {}
     await ping();
     await loadProfiles();
   } catch (e) {

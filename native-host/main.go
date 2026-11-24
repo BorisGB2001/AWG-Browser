@@ -34,7 +34,11 @@ import (
 	"time"
 )
 
-const hostVersion = "2.0.0"
+const hostVersion = "2.1.0"
+
+// defaultDNS is used when a profile has no DNS line. Without it wireproxy falls
+// back to the system resolver and every site name leaks outside the tunnel.
+const defaultDNS = "1.1.1.1, 1.0.0.1"
 
 // hostError is an error whose text is shown to the user as is.
 type hostError struct{ msg string }
@@ -100,15 +104,26 @@ func ensureDirs() error {
 // writePrivate writes a file readable only by the current user (on Windows the
 // per-user LOCALAPPDATA ACL already restricts access).
 func writePrivate(path string, data []byte) error {
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+	// A unique temp name: Firefox runs one host process per message, several may write at once.
+	f, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".*.tmp")
+	if err != nil {
 		return err
 	}
-	if err := os.Rename(tmp, path); err != nil {
+	tmp := f.Name()
+	_, err = f.Write(data)
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err == nil {
+		err = os.Chmod(tmp, 0o600)
+	}
+	if err == nil {
+		err = os.Rename(tmp, path)
+	}
+	if err != nil {
 		os.Remove(tmp)
-		return err
 	}
-	return os.Chmod(path, 0o600)
+	return err
 }
 
 func loadJSON(path string, v any) bool {
@@ -176,6 +191,8 @@ type confInfo struct {
 	Address  string `json:"address"`
 	DNS      string `json:"dns"`
 	Protocol string `json:"protocol"`
+	// DNSDefault is true when the profile has no DNS line and defaultDNS is used.
+	DNSDefault bool `json:"dnsDefault,omitempty"`
 }
 
 func hasAny(s section, keys ...string) bool {
@@ -227,7 +244,28 @@ func describeConf(text string) (confInfo, error) {
 	if hasAny(iface, "randomtrailers", "disablecookies") {
 		proto = "AWG 3.1"
 	}
-	return confInfo{Endpoint: peers[0]["endpoint"], Address: iface["address"], DNS: iface["dns"], Protocol: proto}, nil
+	info := confInfo{Endpoint: peers[0]["endpoint"], Address: iface["address"], DNS: iface["dns"], Protocol: proto}
+	if info.DNS == "" {
+		info.DNS, info.DNSDefault = defaultDNS, true
+	}
+	return info, nil
+}
+
+var interfaceRe = regexp.MustCompile(`(?mi)^[ \t]*\[Interface\][ \t]*$`)
+
+// withDNS returns the config with "DNS = defaultDNS" added to [Interface] when
+// the profile has none, so that names are always resolved inside the tunnel.
+func withDNS(text string) (string, bool) {
+	for _, s := range parseConf(text) {
+		if s["_name"] == "interface" && s["dns"] != "" {
+			return text, false
+		}
+	}
+	loc := interfaceRe.FindStringIndex(text)
+	if loc == nil {
+		return text, false
+	}
+	return text[:loc[1]] + "\nDNS = " + defaultDNS + text[loc[1]:], true
 }
 
 // decodeVpnLink decodes an Amnezia "vpn://..." share string into (config text, suggested name).
@@ -244,7 +282,7 @@ func decodeVpnLink(link string) (string, string, error) {
 	// Qt qCompress: 4-byte big-endian length + zlib stream
 	for _, cand := range [][]byte{tail(raw, 4), raw} {
 		if r, err := zlib.NewReader(bytes.NewReader(cand)); err == nil {
-			if out, err := io.ReadAll(r); err == nil {
+			if out, err := io.ReadAll(io.LimitReader(r, 4<<20)); err == nil { // vpn:// configs are a few KB
 				data = out
 				break
 			}
@@ -411,18 +449,24 @@ func importProfile(name, text string) (profile, error) {
 	}
 	base := slugify(name)
 	id := base
+	var path string
 	for n := 2; ; n++ {
-		path, _ := profilePath(id)
-		if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+		if path, err = profilePath(id); err != nil {
+			return profile{}, err
+		}
+		// O_EXCL reserves the id: two imports running at once cannot take the same one.
+		f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+		if err == nil {
+			f.Close()
 			break
+		}
+		if !errors.Is(err, os.ErrExist) {
+			return profile{}, err
 		}
 		id = fmt.Sprintf("%s-%d", base, n)
 	}
-	path, err := profilePath(id)
-	if err != nil {
-		return profile{}, err
-	}
 	if err := writePrivate(path, []byte(text)); err != nil {
+		os.Remove(path)
 		return profile{}, err
 	}
 	if err := saveMeta(id, name); err != nil {
@@ -443,7 +487,9 @@ func deleteProfile(id string) error {
 	}
 	var st tunnelState
 	if loadJSON(P.State, &st) && st.Profile == id && wireproxyAlive(st.PID) {
-		stopTunnel()
+		if err := stopTunnel(); err != nil {
+			return err
+		}
 	}
 	os.Remove(path)
 	os.Remove(metaPath(id))
@@ -480,8 +526,16 @@ type tunnelState struct {
 	StartedAt int64  `json:"startedAt"`
 }
 
-// iniPath makes a path safe for wireproxy's INI parser (forward slashes work on Windows too).
-func iniPath(p string) string { return filepath.ToSlash(p) }
+// iniPath makes a path safe for wireproxy's INI parser (go-ini): forward slashes
+// (they work on Windows too, and a trailing backslash would mean "continued line")
+// inside backticks, because an unquoted value is cut at the first "#" or ";".
+func iniPath(p string) (string, error) {
+	p = filepath.ToSlash(p)
+	if strings.ContainsAny(p, "`\r\n") {
+		return "", userErr("Путь к данным помощника содержит недопустимый символ: %s", p)
+	}
+	return "`" + p + "`", nil
+}
 
 func portOpen(port int, timeout time.Duration) bool {
 	c, err := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)), timeout)
@@ -502,11 +556,20 @@ func configtest(profileFile string) error {
 	if err != nil {
 		return nil // not installed yet: skip validation
 	}
-	tmp := filepath.Join(P.Run, "configtest.conf")
-	if err := writePrivate(tmp, []byte("WGConfig = "+iniPath(profileFile)+"\n")); err != nil {
+	quoted, err := iniPath(profileFile)
+	if err != nil {
 		return err
 	}
+	f, err := os.CreateTemp(P.Run, "configtest.*.conf")
+	if err != nil {
+		return err
+	}
+	tmp := f.Name()
+	f.Close()
 	defer os.Remove(tmp)
+	if err := writePrivate(tmp, []byte("WGConfig = "+quoted+"\n")); err != nil {
+		return err
+	}
 	cmd := exec.Command(bin, "-n", "-c", tmp)
 	hideWindow(cmd)
 	out, err := cmd.CombinedOutput()
@@ -520,12 +583,37 @@ func configtest(profileFile string) error {
 	return nil
 }
 
-func stopTunnel() {
+// stopTunnel stops the tracked wireproxy. The state file is removed only when the
+// process is really gone: otherwise the tunnel would become untrackable and keep
+// the ports busy forever.
+func stopTunnel() error {
 	var st tunnelState
 	if loadJSON(P.State, &st) && wireproxyAlive(st.PID) {
 		terminate(st.PID)
+		if wireproxyAlive(st.PID) {
+			return userErr("Не удалось остановить wireproxy (pid %d). Завершите процесс вручную.", st.PID)
+		}
 	}
 	os.Remove(P.State)
+	return nil
+}
+
+// trimLog keeps the wireproxy log from growing without limit (it is verbose).
+func trimLog() {
+	const limit, keep = 2 << 20, 256 << 10
+	st, err := os.Stat(P.LogFile)
+	if err != nil || st.Size() <= limit {
+		return
+	}
+	data, err := os.ReadFile(P.LogFile)
+	if err != nil {
+		return
+	}
+	data = data[len(data)-keep:]
+	if i := bytes.IndexByte(data, '\n'); i >= 0 {
+		data = data[i+1:]
+	}
+	writePrivate(P.LogFile, data)
 }
 
 func randomPassword() string {
@@ -553,22 +641,42 @@ func startTunnel(id string, port, infoPort int) (map[string]any, error) {
 	}
 
 	var st tunnelState
-	if loadJSON(P.State, &st) && wireproxyAlive(st.PID) && st.Profile == id && st.Port == port && portOpen(port, 300*time.Millisecond) {
+	if loadJSON(P.State, &st) && wireproxyAlive(st.PID) && st.Profile == id && st.Port == port && st.InfoPort == infoPort && portOpen(port, 300*time.Millisecond) {
 		return publicState(st), nil // already running with the same settings
 	}
-	stopTunnel()
+	if err := stopTunnel(); err != nil {
+		return nil, err
+	}
 	for _, p := range []int{port, infoPort} {
 		if portOpen(p, 300*time.Millisecond) {
 			return nil, userErr("Порт 127.0.0.1:%d уже занят другой программой.", p)
 		}
 	}
 
+	// Profiles without a DNS line run from a copy with the default DNS added.
+	wgFile := path
+	text, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	if patched, changed := withDNS(string(text)); changed {
+		wgFile = filepath.Join(P.Run, "profile.conf")
+		if err := writePrivate(wgFile, []byte(patched)); err != nil {
+			return nil, err
+		}
+	}
+	quoted, err := iniPath(wgFile)
+	if err != nil {
+		return nil, err
+	}
+
 	st = tunnelState{Profile: id, Port: port, InfoPort: infoPort, Username: "awg", Password: randomPassword()}
 	conf := fmt.Sprintf("WGConfig = %s\n\n[Socks5]\nBindAddress = 127.0.0.1:%d\nUsername = %s\nPassword = %s\n",
-		iniPath(path), port, st.Username, st.Password)
+		quoted, port, st.Username, st.Password)
 	if err := writePrivate(P.RunConf, []byte(conf)); err != nil {
 		return nil, err
 	}
+	trimLog()
 	logf, err := os.OpenFile(P.LogFile, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {
 		return nil, err
@@ -580,7 +688,10 @@ func startTunnel(id string, port, infoPort int) (map[string]any, error) {
 		c.Stdout, c.Stderr = logf, logf
 		return c
 	}
-	cmd, err := startDetached(newCmd)
+	cmd, note, err := startDetached(newCmd)
+	if note != "" {
+		fmt.Fprintln(logf, "awg_host:", note)
+	}
 	logf.Close()
 	if err != nil {
 		return nil, userErr("Не удалось запустить wireproxy: %v", err)
@@ -646,7 +757,7 @@ func publicState(st tunnelState) map[string]any {
 		return map[string]any{"running": false}
 	}
 	return map[string]any{
-		"running": true, "profile": st.Profile, "port": st.Port, "username": st.Username,
+		"running": true, "profile": st.Profile, "port": st.Port, "infoPort": st.InfoPort, "username": st.Username,
 		"password": st.Password, "startedAt": st.StartedAt, "pid": st.PID, "metrics": metrics(st.InfoPort),
 	}
 }
@@ -719,8 +830,7 @@ func handle(msg map[string]any) (map[string]any, error) {
 		st, err := startTunnel(str(msg, "id"), num(msg, "port", 40800), num(msg, "infoPort", 40801))
 		return map[string]any{"state": st}, err
 	case "stop":
-		stopTunnel()
-		return map[string]any{}, nil
+		return map[string]any{}, stopTunnel()
 	case "status":
 		var st tunnelState
 		loadJSON(P.State, &st)
@@ -803,7 +913,10 @@ func main() {
 			}
 			return
 		case "--stop":
-			stopTunnel()
+			if err := stopTunnel(); err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
+			}
 			return
 		}
 	}

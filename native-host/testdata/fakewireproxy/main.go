@@ -44,7 +44,7 @@ func main() {
 		}
 		switch strings.TrimSpace(k) {
 		case "WGConfig":
-			wg = strings.TrimSpace(v)
+			wg = strings.Trim(strings.TrimSpace(v), "`") // go-ini raw string
 		case "BindAddress":
 			bind = strings.TrimSpace(v)
 		}
@@ -57,6 +57,8 @@ func main() {
 	if test {
 		return
 	}
+	// Let the test see which config the tunnel was really started with.
+	os.WriteFile(conf+".seen", body, 0o600)
 	if info != "" {
 		go http.ListenAndServe(info, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprint(w, "private_key=REDACTED\nendpoint=198.51.100.7:51820\nlast_handshake_time_sec=1700000000\nrx_bytes=1000\ntx_bytes=200\n")

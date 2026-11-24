@@ -55,6 +55,13 @@ textarea { font-family: ui-monospace, Menlo, monospace; font-size: 12px; resize:
 .row { display: flex; gap: 8px; align-items: center; }
 .grow { flex: 1; min-width: 0; }
 
+.warn {
+  border: 1px solid var(--warn);
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
 /* ---------- toasts ---------- */
 .toast-stack {
   position: fixed;
